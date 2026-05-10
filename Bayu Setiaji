@@ -1,0 +1,140 @@
+1. Penyelesaian Implementasi MiniCompiler
+
+# --- 1. Definisi Node AST ---
+class AST: pass
+
+class BinOp(AST):
+    def __init__(self, left, op, right):
+        self.left = left
+        self.op = op
+        self.right = right
+
+class Num(AST):
+    def __init__(self, value):
+        self.value = value
+
+class Var(AST):
+    def __init__(self, name):
+        self.name = name
+
+class ParserError(Exception):
+    pass
+
+# --- 2. Implementasi MiniCompiler ---
+class MiniCompiler:
+    def __init__(self, source, env):
+        # TUGAS 1: Perbarui regex agar mengenali simbol '^'
+        # Simbol '^' ditambahkan ke dalam kurung siku [...] bersama operator lainnya
+        self._tokens = iter(re.findall(r'[a-zA-Z_]\w*|\d+(?:\.\d+)?|[+*/()^\-]', source) + ['?'])
+        self._current = None
+        self._env = env 
+        self._temp_count = 0
+        self.advance()
+
+    def advance(self):
+        try:
+            self._current = next(self._tokens)
+        except StopIteration:
+            self._current = None
+
+    def expect(self, expected):
+        if self._current != expected and not (expected == "ID" and self._current.isalnum()):
+            raise ParserError(f"Expected {expected}, found {self._current}")
+        token = self._current
+        self.advance()
+        return token
+
+    def factor(self):
+        token = self._current
+        if token is not None and token.replace('.', '', 1).isdigit():
+            self.advance()
+            return Num(float(token) if '.' in token else int(token))
+        elif token and token.isalpha():
+            if token not in self._env:
+                raise ParserError(f"Semantic Error: Undefined variable '{token}'")
+            self.advance()
+            return Var(token)
+        elif token == '(':
+            self.advance()
+            node = self.expr()
+            self.expect(')')
+            return node
+        raise ParserError(f"Unexpected token: {token}")
+
+    # TUGAS 2: Implementasikan fungsi power()
+    def power(self):
+        node = self.factor()
+        # Logika perulangan while untuk '^' (Sama seperti implementasi term)
+        while self._current == '^':
+            op = self._current
+            self.advance()
+            node = BinOp(left=node, op=op, right=self.factor())
+        return node
+
+    def term(self):
+        # TUGAS 3: Hubungkan hierarki ke self.power()
+        node = self.power() # Mengganti self.factor() menjadi self.power()
+        while self._current in ('*', '/'):
+            op = self._current
+            self.advance()
+            # Pemanggilan sisi kanan juga diubah agar merujuk ke tingkat hirarki di bawahnya
+            node = BinOp(left=node, op=op, right=self.power()) 
+        return node
+
+    def expr(self):
+        node = self.term()
+        while self._current in ('+', '-'):
+            op = self._current
+            self.advance()
+            node = BinOp(left=node, op=op, right=self.term())
+        return node
+
+    def generate_tac(self, node):
+        if isinstance(node, Num): return str(node.value)
+        if isinstance(node, Var): return node.name
+        
+        left_val = self.generate_tac(node.left)
+        right_val = self.generate_tac(node.right)
+        
+        self._temp_count += 1
+        temp_name = f"t{self._temp_count}"
+        print(f"{temp_name} = {left_val} {node.op} {right_val}")
+        return temp_name
+
+# --- 3. Uji Coba ---
+source_code = "a ^ 2 + b * c"
+symbol_table = {'a': 5, 'b': 10, 'c': 2}
+
+try:
+    print(f"Input: {source_code}")
+    compiler = MiniCompiler(source_code, symbol_table)
+    ast_root = compiler.expr()
+    
+    print("\n--- Output Three Address Code (TAC) ---")
+    compiler.generate_tac(ast_root)
+
+except Exception as e:
+    print(f"Error: {e}")
+
+
+Hasil Keluaran TAC yang Seharusnya:
+
+Input: a ^ 2 + b * c
+
+--- Output Three Address Code (TAC) ---
+t1 = a ^ 2
+t2 = b * c
+t3 = t1 + t2
+
+4. Jawaban Pertanyaan Refleksi
+
+1. Mengapa fungsi power() harus dipanggil di dalam term(), bukan sebaliknya? Jelaskan kaitannya dengan Operator Precedence.
+Dalam Recursive Descent Parsing (metode dari atas ke bawah), aturan tata bahasa (EBNF) dirancang sehingga operator dengan prioritas paling rendah dieksekusi/dipanggil paling awal, sedangkan operator dengan prioritas paling tinggi dipanggil paling akhir/paling dalam.
+Karena pangkat (^) memiliki precedence (prioritas) lebih tinggi daripada perkalian/pembagian (*, /), maka term() yang mengurus * dan / harus mencari sub-ekspresi dari pangkat terlebih dahulu dengan memanggil power(). Jika dibalik (dimana power() memanggil term()), maka parser akan keliru mengeksekusi perkalian terlebih dahulu sebelum pangkat, yang melanggar hukum hirarki matematika standar.
+
+2. Apa yang terjadi pada fase Analisis Semantik jika variabel z digunakan dalam kode sumber tetapi tidak ada di symbol_table?
+Jika variabel z ditemukan oleh lexer dan diteruskan ke parser, metode factor() akan mendeteksi bahwa itu adalah teks (variabel). Kemudian, MiniCompiler akan melakukan analisis semantik sederhana dengan memeriksa keberadaan variabel tersebut di dalam self._env (yang mana adalah symbol_table). Karena z tidak ada di dalamnya, program akan melempar exception dan berhenti berjalan, lalu mengeluarkan pesan: ParserError: Semantic Error: Undefined variable 'z'. Ini mencegah kompilator untuk membuat kode mesin atau TAC dari variabel yang nilainya belum dideklarasikan.
+
+3. Jelaskan mengapa dalam TAC, instruksi untuk a ^ 2 harus muncul sebelum instruksi untuk +.
+Metode generate_tac beroperasi dengan menelusuri Abstract Syntax Tree (AST) menggunakan metode Post-Order Traversal (Kiri-Kanan-Akar).
+Karena ^ dan * memiliki prioritas lebih tinggi saat proses parsing, node + otomatis menjadi Root (Akar) utama, sedangkan sub-node yang menangani a ^ 2 ada di cabang kiri terbawah. Untuk dapat mengevaluasi dan mencetak hasil pertambahan (+), program wajib memiliki nilai operan kiri dan kanannya. Akibatnya, instruksi a ^ 2 dijalankan lebih dulu dan disimpulkan dalam temporary variable (seperti t1) agar hasilnya siap digunakan sewaktu operator + akhirnya dievaluasi.
