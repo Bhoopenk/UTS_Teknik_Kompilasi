@@ -127,7 +127,6 @@ t2 = b * c
 t3 = t1 + t2
 
 4. Jawaban Pertanyaan Refleksi
-Gunakan jawaban di bawah ini sebagai referensi untuk laporan tugas Anda:
 
 1. Mengapa fungsi power() harus dipanggil di dalam term(), bukan sebaliknya? Jelaskan kaitannya dengan Operator Precedence.
 Dalam Recursive Descent Parsing (metode dari atas ke bawah), aturan tata bahasa (EBNF) dirancang sehingga operator dengan prioritas paling rendah dieksekusi/dipanggil paling awal, sedangkan operator dengan prioritas paling tinggi dipanggil paling akhir/paling dalam.
